@@ -1,6 +1,7 @@
 ---
 layout: post
 title:  "Joyful Annotated ASTs"
+tags: praxis-compiler haskell
 ---
 
 *This post is a deep dive into the Abstract Syntax Tree (AST) representation used by the Praxis compiler. This includes a novel Haskell technique, that I have called introspection, which provides a way to easily manipulate mutually recursive structures in ways which would otherwise be extremely cumbersome. It assumes familiarity with Haskell, including Functor, Applicative, and Traversable typeclasses.*
@@ -9,7 +10,7 @@ title:  "Joyful Annotated ASTs"
 <br/>
 
 # The Praxis AST
-Let's dive straight in to a trimmed-down version of the AST representation, which can be found in [Term.hs][Term.hs]:
+Let's dive straight in to a trimmed-down version of the AST representation used by the Praxis compiler:
 
 {% highlight haskell %}
 type Name = String
@@ -55,11 +56,11 @@ data Kind = KindFun (Annotated Kind) (Annotated Kind)
           | KindUni Name -- a unification variable (used for kind inference)
 {% endhighlight %}
 
-For the moment let's ignore all the mentions of `Annotated`, which we'll look at in detail separately.
+For the moment let's ignore all the mentions of `Annotated`, which we'll look at in detail separately. It's enough to know that `Annotated a` means `a` with some extra information attached.
 
-Looking at this representation gives some insight to the basic structure of the Praxis language. We can see that a program (`Program`) is a list of declarations (`Decl`), and that a declaration is either a block of recursive declarations (`DeclRec`) or a variable (`DeclVar`) which has a name, an optional type signature (`QType`), and a defining expression (`Exp`). In fact there are two flavours of types, `Type` for monomorphic types and `QType` for polymorphic types. Finally, patterns (`Pat`) appear in certain expressions.
+It's not important to understand all of the details, but looking at this representation should afford some insight to the basic structure of the Praxis language. We can see that a program (`Program`) is a list of declarations (`Decl`), and that a declaration is either a block of recursive declarations (`DeclRec`) or a variable (`DeclVar`) which has a name, an optional type signature (`QType`), and a defining expression (`Exp`). There are two flavours of types, `Type` for monomorphic types and `QType` for polymorphic types (the 'Q' standing for *quantified*). Finally, patterns (`Pat`) appear in certain expressions, such as `Case` expressions.
 
-To make it easier to talk about, I'll refer to these types collectively as **terms**, so that `Exp` for example is one **category** of term. It's worth pausing here for a moment and appreciating just how inherently mutually recursive terms are, as we will see later how this presents challenges in performing certain manipulations.
+To make it easier to talk about, I'll refer to these types collectively as *terms*, so that `Exp` for example is one *category* of term. It's worth pausing here for a moment and appreciating just how intertwined the categories are. We'll see later how this makes even simple operations quite challenging.
 
 <br/>
 # Annotations
@@ -67,8 +68,6 @@ To make it easier to talk about, I'll refer to these types collectively as **ter
 Now, let's take a look at `Annotated`:
 
 {% highlight haskell %}
-
--- Common/Tag.hs
 
 data Tag a b = a :< b
 
@@ -79,8 +78,6 @@ tag f (a :< x) = (:< x) <$> f a
 
 value :: Functor f => (b -> f c) -> Tag a b -> f (Tag a c)
 value f (a :< x) = (a :<) <$> f x
-
--- Term.hs
 
 type family Annotation a where
   Annotation Exp      = Annotated Type
@@ -104,16 +101,21 @@ A few things are worth explaining here:
 - `Source` (definition omitted) is a range of line and column numbers indicating the location of a substring in the source code. This is used purely for error messages.
 - `Annotation a` is a type family which allows us to annotate different categories of terms with different types.
 
-Although every term has a `Source`, only certain categories (`Exp`, `Pat`, and `Type`) have an `Annotation`. The annotation is wrapped in a `Maybe` since it may not be present depending on the stage of compilation[^1]. For example, `Exp` and `Pat` will only have their `Type` annotations set after the type-checking stage.
+Although every term has a `Source`, only certain categories (`Exp`, `Pat`, and `Type`) have an `Annotation`. The annotation is wrapped in a `Maybe` since it may not be present depending on the stage of compilation[^1]. For example, `Exp` and `Pat` will only have their `Type` annotations set after the type inference stage.
 
-It's worth mentioning that this approach is somewhat similar to *Trees that grow*[^2], but here our annotations only need to depend on the category, not the individual constructors within a category. This is a major simplification that has proved to be sufficient for the Praxis compiler.
+It's worth mentioning that this approach is somewhat similar to *Trees that grow*[^2], but here our annotations only need depend on the category, not the individual constructors within a category. This is a major simplification that has proved to be sufficient for the Praxis compiler.
+
 
 <br/>
 # The Manipulation Problem
 
 Let's look at one sort of manipulation we want to do to our terms: substitutions. To provide a motivated example, we'll look at substitutions in the context of type inference.
 
-The goal of type inference is to set the type annotation of every expression in the program. This is done in two stages. The first stage (*constraint generation*) traverses the program tree and annotates every expression with a type, however it is allowed to use type *unification variables* (α, β, ...) which each represent a concrete but as-yet unknown type. At the same time *constraints* are generated involving these unification variables, such as `α ~ β`, `α ~ (γ -> Bool)`, and `Integral γ`. The second stage (*constraint solving*) attempts to resolve the unification variables by deduction from the set of generated constraints. When a unification variable is resolved, e.g. `β := (Int -> Bool)`, the unification variable (e.g. `β`) is replaced by the resolved type (e.g. `Int -> Bool`) throughout the program, and in all the generated constraints. Type inference is completed when all unification variables have been resolved.
+The goal of type inference is to set the type annotation of every expression and pattern in the program. This happens in two stages:
+
+1. The first stage (*constraint generation*) traverses the program tree and annotates every expression with a type, however it is allowed to use *type unification variables* (α, β, ...) which each represent a concrete but as-yet unknown type. At the same time *constraints* are generated involving these unification variables, such as `α ~ β`, `α ~ (γ -> Bool)`, and `Integral γ`.
+
+2. The second stage (*constraint solving*) attempts to resolve the unification variables by deduction from the set of generated constraints. When a unification variable is resolved, e.g. `β := (Int -> Bool)`, the unification variable (`β`) is replaced by the resolved type (`Int -> Bool`) throughout the program, and in all the generated constraints. Type inference is completed when all unification variables have been resolved.
 
 Let's consider how we would apply a substitution `α := t` throughout a program. In essence we need to find all the types within the program, and for each of them apply the substitution. So, let's start with a function to apply the substitution to a type:
 
@@ -131,7 +133,7 @@ subTyUniInType uni resolvedType (a :< ty) = (a :<) $ case ty of
   where subInType = subTyUniInType uni resolvedType
 {% endhighlight %}
 
-In other words, for a substitution `α := t`, `subTyUniInType` recursively descends through the type, leaving the annotation `a` as-is at each level, and replacing every occurence of `TyUni α` with `t`.
+In other words, for a substitution `α := t`, `subTyUniInType` recursively descends through the type we want to apply the substitution to, leaving the annotation `a` as-is at each level, and replacing every occurence of `TyUni α` with `t`.
 
 So far this may not seem too bad, but now let's write the substitution for programs proper. To do this we will keep in mind that types can appear in two places[^3]: the annotation of an expression and the annotation of a pattern.
 
@@ -178,17 +180,17 @@ subTyUniInPat uni resolvedType (a :< pat) = (subInAnnotation a :<) $ case pat of
         subInAnnotation (src, Just ty) = (src, Just (subInType ty))
 {% endhighlight %}
 
-Suffice it to say this does not spark joy.
+Now what if I told you that in addition to type inference, there is also kind inference, which operates in a similar way but using *kind unification variables*. For substitutions of these we'll need a similar set of functions `subKindUniInKind`, `subKindUniInProgram`, `subKindUniInDecl`, `subKindUniInExp`, `subKindUniInPat`, and `subKindUniInType`.
 
-Now what if I told you that in addition to type inference, there is also *kind inference*, which operates in a similar way but using *kind unification variables*. For substitutions of these we'll need a similarly tedious set of functions `subKindUniInKind`, `subKindUniInProgram`, `subKindUniInDecl`, `subKindUniInExp`, `subKindUniInPat`, and `subKindUniInType`.
+So our desire to implement just one simple manipulation results in a quadratic explosion of tedious category-specific functions. This many functions is not only a pain to write, it's also exceedingly easy to forget about a recursive case or forget to substite through an annotation. Suffice it to say this does not spark joy.
 
-At first this quadratic explosion in complexity appears to be the cost of type-safety in the presence of mutually recursive structures. Thankfully, it doesn't have to be this way. We'll see that with the help of a technique I'm calling *introspection*, we can easily construct a general purpose substitution, as well as countless other manipulations, in just a handful of lines.
+You may want to pause here and think if there are any alternatives that would let us solve our substitution requirement more easily. In the following sections we'll see that this can be done, and it can be done in a generic way which lets us perform countless other manipulations in just a handful of lines.
 
 
 <br/>
 # Introspection
 
-The key idea here is we need some way to abstract over the category of a term. Then, instead of needing functions for every category (i.e. from `Exp` to `Exp`, and from `Pat` to `Pat`, and so on), we can have one single function from term to term.
+The key idea is we need some way to abstract over the category of a term. Then, instead of needing functions for every category (i.e. from `Exp` to `Exp`, and from `Pat` to `Pat`, and so on), we can have one single function from term to term.
 
 One simple solution is to have a `Term` type which is a union over all the categories, say:
 
@@ -206,9 +208,7 @@ data Term = TermBind (Annotated Bind)
 
 This works, but we can do better. A weakness of this approach is that we lose the ability to express at the type level that a transformation preserves the category.
 
-Instead, the approach used in the Praxis compiler is a `Term` typeclass. Then a category-preserving transformation is typed as `Term a => a -> a`.
-
-To implement the `Term` typeclass, we leverage GADTs:
+Instead, the approach used in the Praxis compiler is a `Term` typeclass. Then a category-preserving transformation is typed as `Term a => a -> a`. To implement the `Term` typeclass, we leverage GADTs:
 
 {% highlight haskell %}
 {-# LANGUAGE GADTs                     #-}
@@ -241,7 +241,7 @@ instance Term Exp where
 
 {% endhighlight %}
 
-This construction lets us perform case distinctions on the category of an arbitrary term. To see what that looks like practice, let's compare it to the `Term` type approach for lifting a function over `Exp` to a function over terms:
+This construction lets us perform case distinctions on the category of an arbitrary term. To see what this looks like practice, let's compare it to the `Term` type approach for lifting a function over `Exp` to a function over terms:
 
 {% highlight haskell %}
 -- Term type approach
@@ -261,17 +261,17 @@ liftExp x = case (witness :: I a) of
   _    -> x
 {% endhighlight %}
 
-There are a few subtleties here:
+There are a few subtleties with the typeclass solution:
 - The `a` in `witness :: I a` refers to the type of `x`, thanks to the *ScopedTypeVariables* extension.
 - When the `IExp` pattern matches, Haskell deduces that `a ~ Exp` since `IExp :: I Exp`. This means we get to use `x :: Exp` in the body `f x`.
 
-As alluded to earlier, the typeclass approach gives us a type-checked guarantee that the category is preserved.
+As alluded to earlier, here the typeclass approach gives us a type-checked guarantee that the category is preserved.
 
 
 <br/>
 # Traversals
 
-An addition to the above, we require terms to implement traverse-like semantics. This will let us encapsulate the recursive structure of terms, allowing us later to succinctly write manipulations like substitutions.
+An addition to the above, we require terms to implement traverse-like semantics. This will let us encapsulate the recursive structure of terms, allowing us to then succinctly write manipulations like substitutions.
 
 {% highlight haskell %}
 {-# LANGUAGE GADTs                     #-}
@@ -288,7 +288,7 @@ class Term a where
 
 We've added two functions:
 - `recurseTerm` applies an applicative action to every subterm (of an unannotated term).
-- `recurseAnnotation` applies an applicative action to every subterm in the annotation (of an annotated term). This takes an additional `I a` argument which is needed to unambiguously determine `a` (since `Annotation` is non-injective).
+- `recurseAnnotation` applies an applicative action to every subterm in an annotation. This takes an additional `I a` argument which is needed to unambiguously determine `a` (since `Annotation` is non-injective).
 
 These can be combined into a single `recurse` function which performs both actions:
 
@@ -298,15 +298,18 @@ recurse f ((src, ann) :< x) = (\ann x -> (src, ann) :< x) <$> traverse (recurseA
 {% endhighlight %}
 
 
-The implementations of `recurseTerm` and `recurseAnnotation` are straightforward:
+Although the types of `recurseTerm` and `recurseAnnotation` may look quite scary, the implementations are quite straightforward in practice, following a similar pattern to a `Traversable`:
 
 {% highlight haskell %}
+-- Implementation of recurseAnnotation for terms with a Void annotation
 trivial :: (Annotation a ~ Void, Term a, Applicative f) => I a -> Termformer f -> Annotation a -> f (Annotation a)
 trivial _ _ = absurd
 
+-- Helper for traversing a pair
 pair :: (Term a, Term b) => Applicative f => Termformer f -> (Annotated a, Annotated b) -> f (Annotated a, Annotated b)
 pair f (a, b) = (,) <$> f a <*> f b
 
+-- Helper for traversing a list of pairs
 pairs :: (Term a, Term b) => Applicative f => Termformer f -> [(Annotated a, Annotated b)] -> f [(Annotated a, Annotated b)]
 pairs f = traverse (pair f)
 
@@ -336,7 +339,7 @@ instance Term Exp where
     Unit            -> pure Unit
     Var n           -> pure (Var n)
     Where a bs      -> Where <$> f a <*> traverse f bs
-  recurseAnnotation _ f x = f x
+  recurseAnnotation _ f x = f x -- Apply f to the Type annotation
 
 -- etc ...
 {% endhighlight %}
@@ -345,7 +348,7 @@ instance Term Exp where
 <br/>
 # Manipulations Revisited
 
-Finally, we can put this all together to write a generic substitution:
+Finally, we can leverage the completed `Term` typeclass to write a generic substitution, using `Identity` as the applicative:
 
 {% highlight haskell %}
 sub :: forall a. Term a => (forall b. Term b => Annotated b -> Maybe (Annotated b)) -> Annotated a -> Annotated a
@@ -354,7 +357,22 @@ sub f x = case f x of
   Nothing -> runIdentity $ recurse (Identity . sub f) x
 {% endhighlight %}
 
-We can come up with other transformations too, for example summing a monoidal action:
+For the original problem of wanting to substitute a type unification variable, we can call `sub` as follows:
+
+{% highlight haskell %}
+subTyUni :: Name -> Annotated Type -> Annotated a -> Annotated a
+subTyUni uni resolvedType = sub f where
+  f :: forall b. Term b => Annotated b -> Maybe (Annotated b)
+  f x = case (witness :: I b) of
+    IType -> case x of
+      (_ :< TyUni n)
+        | n == uni   -> Just resolvedType
+      _              -> Nothing
+    _     -> Nothing
+{% endhighlight %}
+
+<br/>
+We can write other manipulations too, for example summing over a monoidal action using `Const` as the applicative:
 
 {% highlight haskell %}
 sum :: forall a m. (Monoid m, Term a) => (forall b. Term b => b -> m) -> Annotated a -> m
@@ -373,6 +391,11 @@ containsTyUni x = getAny (sum f x) where
       _       -> Any False
     _     -> Any False
 {% endhighlight %}
+
+<br/>
+
+
+That's all there is to know about the Praxis AST. May your trees by joyful :)
 
 <br/>
 <i></i>
