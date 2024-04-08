@@ -3,7 +3,7 @@ layout: post
 title:  "Joyful Annotated ASTs"
 ---
 
-*This post is a deep dive into the Abstract Syntax Tree (AST) representation used by the Praxis compiler. This includes a novel Haskell technique, that I have called introspection, which provides a way to easily manipulate mutually recursive structures in ways which would otherwise be extremely cumbersome.*
+*This post is a deep dive into the Abstract Syntax Tree (AST) representation used by the Praxis compiler. This includes a novel Haskell technique, that I have called introspection, which provides a way to easily manipulate mutually recursive structures in ways which would otherwise be extremely cumbersome. It assumes familiarity with Haskell, including Functor, Applicative, and Traversable typeclasses.*
 
 ---
 <br/>
