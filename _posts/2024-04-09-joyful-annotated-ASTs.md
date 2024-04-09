@@ -371,7 +371,6 @@ subTyUni uni resolvedType = sub f where
     _     -> Nothing
 {% endhighlight %}
 
-<br/>
 We can write other manipulations too, for example summing over a monoidal action using `Const` as the applicative:
 
 {% highlight haskell %}
@@ -392,13 +391,10 @@ containsTyUni x = getAny (sum f x) where
     _     -> Any False
 {% endhighlight %}
 
-<br/>
-
-
 That's all there is to know about the Praxis AST. May your trees by joyful :)
 
 <br/>
-<i></i>
+
 
 ---
 
