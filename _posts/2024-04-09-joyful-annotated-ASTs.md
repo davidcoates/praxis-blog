@@ -279,12 +279,12 @@ An addition to the above, we require terms to implement traverse-like semantics.
 {-# LANGUAGE Rank2Types                #-}
 {-# LANGUAGE TypeOperators             #-}
 
-type Termformer f = forall a. Term a => Annotated a -> f (Annotated a)
+type TermAction f = forall a. Term a => Annotated a -> f (Annotated a)
 
 class Term a where
   witness :: I a
-  recurseTerm :: Applicative f => Termformer f -> a -> f a
-  recurseAnnotation :: (Term a, Applicative f) => I a -> Termformer f -> Annotation a -> f (Annotation a)
+  recurseTerm :: Applicative f => TermAction f -> a -> f a
+  recurseAnnotation :: (Term a, Applicative f) => I a -> TermAction f -> Annotation a -> f (Annotation a)
 {% endhighlight %}
 
 We've added two functions:
@@ -294,7 +294,7 @@ We've added two functions:
 These can be combined into a single `recurse` function which performs both actions:
 
 {% highlight haskell %}
-recurse :: forall a f. (Term a, Applicative f) => Termformer f -> Annotated a -> f (Annotated a)
+recurse :: forall a f. (Term a, Applicative f) => TermAction f -> Annotated a -> f (Annotated a)
 recurse f ((src, ann) :< x) = (\ann x -> (src, ann) :< x) <$> traverse (recurseAnnotation (witness :: I a) f) ann <*> recurseTerm f x
 {% endhighlight %}
 
@@ -303,15 +303,15 @@ Although the types of `recurseTerm` and `recurseAnnotation` may look quite scary
 
 {% highlight haskell %}
 -- Implementation of recurseAnnotation for terms with a Void annotation
-trivial :: (Annotation a ~ Void, Term a, Applicative f) => I a -> Termformer f -> Annotation a -> f (Annotation a)
+trivial :: (Annotation a ~ Void, Term a, Applicative f) => I a -> TermAction f -> Annotation a -> f (Annotation a)
 trivial _ _ = absurd
 
 -- Helper for traversing a pair
-pair :: (Term a, Term b) => Applicative f => Termformer f -> (Annotated a, Annotated b) -> f (Annotated a, Annotated b)
+pair :: (Term a, Term b) => Applicative f => TermAction f -> (Annotated a, Annotated b) -> f (Annotated a, Annotated b)
 pair f (a, b) = (,) <$> f a <*> f b
 
 -- Helper for traversing a list of pairs
-pairs :: (Term a, Term b) => Applicative f => Termformer f -> [(Annotated a, Annotated b)] -> f [(Annotated a, Annotated b)]
+pairs :: (Term a, Term b) => Applicative f => TermAction f -> [(Annotated a, Annotated b)] -> f [(Annotated a, Annotated b)]
 pairs f = traverse (pair f)
 
 instance Term Bind where
