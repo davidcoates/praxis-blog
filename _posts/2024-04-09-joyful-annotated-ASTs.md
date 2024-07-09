@@ -257,7 +257,7 @@ liftExp f x = case x of
 
 -- Term typeclass approach
 liftExp :: forall a. Term a => (Exp -> Exp) -> a -> a
-liftExp x = case (witness :: I a) of
+liftExp f x = case (witness :: I a) of
   IExp -> f x
   _    -> x
 {% endhighlight %}
