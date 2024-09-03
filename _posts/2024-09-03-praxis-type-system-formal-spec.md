@@ -5,7 +5,7 @@ tags: praxis type-system affine-types linear-types
 comments: true
 ---
 
-*This post formally defines the type system introduced informally in the [previous post]({% post_url 2024-09-03-praxis-type-system %}).*
+*This post formally defines the type system [introduced informally in the this post]({% post_url 2024-09-03-praxis-type-system %}).*
 $$
 \def\ref{\mathcal{\&}}
 \def\view{\mathcal{?}}

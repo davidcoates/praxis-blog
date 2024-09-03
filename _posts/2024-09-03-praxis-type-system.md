@@ -190,4 +190,10 @@ prod : forall ?v ?w a b f | Cartesian f. (?v (f a), ?w (f b)) -> f (?v a, ?w b)
 operator (_ <*> _) = prod
 ```
 
+<br/>
+
+---
+
+*For a formal specification of the type system, [see this post]({% post_url 2024-09-03-praxis-type-system-formal-spec %}).*
+
 
