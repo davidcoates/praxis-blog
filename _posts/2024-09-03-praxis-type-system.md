@@ -69,7 +69,7 @@ When using `read` for a function call, like `read x in f x`, the syntax sugar `f
 Now using references and reads, we have:
 
 ```
-get : forall &r a. (&r (Array a), USize) -> &r a
+get : forall &r a. (&r Array a, USize) -> &r a
 operator (_ [ _ ]) = get
 ```
 
@@ -78,7 +78,7 @@ y0 = &ys[0] -- read ys in get (ys, 0)
 y1 = &ys[1] -- read ys in get (ys, 1)
 ```
 
-Here `&r` is a *reference variable*, which abstracts over *reference labels*.
+Here `&r` is a *reference variable*, which abstracts over *reference labels*. Note that applications of `&r` are right-associative, so `&r Array a` means `&r (Array a)`.
 
 Since `get` is given a reference to an array, the element returned is also a reference. The same reference label is used to indicate that the lifetime of the element is coupled to the lifetime of the array. However, a reference of a non-affine type simplifies to the type itself. So in this example the return type `&r Bool` simplifies to `Bool`.
 
@@ -103,7 +103,7 @@ map_value : forall a b. -> (a -> b) -> Array a -> Array b
 ```
 
 ```
-map_reference : forall &r a b. -> (&r a -> b) ->  &r (Array a) -> Array b
+map_reference : forall &r a b. -> (&r a -> b) ->  &r Array a -> Array b
 ```
 
 These are both useful, for different situations:
@@ -114,10 +114,10 @@ These are both useful, for different situations:
 There are many other functions which, similar to map, could be written either using values or using references. Thankfully, Praxis provides a way to unify the two forms, using *views*:
 
 ```
-map : forall ?v a b. -> (?v a -> b) ->  ?v (Array a) -> Array b
+map : forall ?v a b. -> (?v a -> b) ->  ?v Array a -> Array b
 ```
 
-Here `?v` is a *view variable*, which can be either a reference or the *value view* `!`, where `! a ~ a`.
+Here `?v` is a *view variable*, which can be either a reference or the *identity view* `@`, where `@ a ~ a`. Note that as with references, views are right-associative.
 
 Views are a powerful tool to abstract over mutability; Instead of having to write a mutable and non-mutable version of the same function or structure (e.g. an iterator), we can write one unifying version using views.
 
@@ -130,7 +130,7 @@ Let's now take a break from arrays, to take a look at an implementation of `map`
 ```
 data List a = Nil () | Cons (a, List a)
 
-map : forall ?v a b. -> (?v a -> b) ->  ?v (List a) -> List b
+map : forall ?v a b. -> (?v a -> b) ->  ?v List a -> List b
 map f = cases
   Nil ()       -> Nil ()
   Cons (x, xs) -> Cons (f x, map f xs)
@@ -142,10 +142,10 @@ If you are familiar with functional languages, then you should be able to see ho
 `forall a b. (a -> b) -> List a -> List b`.
 
 The magic here is that `map` can *also* be typed as:  
-`forall &r a b. (&r a -> b) -> &r (List a) -> List b`.
+`forall &r a b. (&r a -> b) -> &r List a -> List b`.
 
 And moreover, *also* as the (most general) type:  
-`forall ?v a b. (?v a -> b) -> ?v (List a) -> List b`.
+`forall ?v a b. (?v a -> b) -> ?v List a -> List b`.
 
 The reason this works is because pattern matching plays nicely with views and references. When you pattern match a value, reference, or view, the components are made available as values, references, or views (respectively).
 
@@ -185,7 +185,7 @@ This explains why functions in Praxis are often uncurried - to avoid unnecessary
 As a final note, this preference against currying leads us to a different applicative operator, which corresponds neatly to the notion of a cartesian product:
 
 ```
-prod : forall ?v ?w a b f | Cartesian f. (?v (f a), ?w (f b)) -> f (?v a, ?w b)
+prod : forall ?v ?w a b f | Cartesian f. (?v f a, ?w f b) -> f (?v a, ?w b)
 
 operator (_ <*> _) = prod
 ```

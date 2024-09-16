@@ -9,6 +9,7 @@ comments: true
 $$
 \def\ref{\mathcal{\&}}
 \def\view{\mathcal{?}}
+\def\identity{\mathcal{@}}
 \def\value{\mathcal{!}}
 \newcommand{\label}[1]{\rm {\small #1}}
 \newcommand{\type}[3]{A, #1 \vdash #2 \dashv #3}
@@ -17,40 +18,91 @@ $$
 ---
 <br/>
 
-# Kinds
+# Type Operators
 
-In total we have introduced four new type operators:
+Type operators are defined as any of the following:
+* the identity view $$\identity$$,
+* a reference label $$\ref{l}$$,
+* a reference variable $$\ref{r}$$,
+* a view variable $$\view{v}$$,
+* a set of any combination of the above.
 
-* $$\ref{r}$$ - a reference variable
-* $$\view{v}$$ - a view variable
-* $$\ref{l}$$ - a reference label
-* $$\value$$ - a value view
+The application of a type operator, which I'll denote using $$\star$$, is a construct distinct from (regular) type application.
 
-Since these are constructs at the type level, we need to consider their kinds.
+In addition, the type system supports *value variables*, denoted $$\value{a}$$, which can only unify with types that do not have a top-level type operator application.
 
-The naive answer is to consider them all as having kind $$\text{Type} \rightarrow \text{Type}$$, since they are all applied to a type and the result is a type. However, this is insufficient, since in general it does not make sense to allow a type function to stand in for a reference or view. For example, $$\text{map}$$ would become:
+# Normalisation
 
-$$\forall \: f \: v \: a \: b \mid \text{Functor} \: f. (v \: a \rightarrow b) \rightarrow v \: (f \: a) \rightarrow f \: b,$$
+Types are subject to *normalisation*. Let $$A \vdash C$$ mean the type constraint $$C$$ follows from the set of axioms $$A$$. Then normalisation is the reflexive transitive closure of $$\leadsto_A$$ defined below:
 
-which is clearly not possible to implement generically for all $$v : \text{Type} \rightarrow \text{Type}$$.
-
-
-Instead, references and views have their own special kinds, $$\text{Ref}$$ and $$\text{View}$$ respectively. Moreover, these kinds are assigned *syntactically*, in order to aid readability and avoid extensive ambiguity with inference. That is, $$\ref{a}$$ must have kind $$\text{Ref}$$, $$\view{a}$$ must have kind $$\text{View}$$, and $$a$$ must have some kind which is neither $$\text{Ref}$$ nor $$\text{View}$$ (e.g. $$\text{Type}$$, $$\text{Type} \rightarrow \text{Type}$$, or even $$\text{Ref} \rightarrow \text{View} \rightarrow \text{Type}$$).
-
-This means we are abusing notation by having application (the space between types) mean different things depending on context:
-
-* Application of a type function (e.g. $$a \: b$$) has kind $$(\kappa_1 \rightarrow \kappa_2) \rightarrow \kappa_1 \rightarrow \kappa_2$$.
-* Taking a reference of a type (e.g. $$\ref{a} \: b$$) has kind $$\text{Ref} \rightarrow \text{Type} \rightarrow \text{Type}$$.
-* Taking a view of a type (e.g. $$\view{a} \: b$$) has kind $$\text{View} \rightarrow \text{Type} \rightarrow \text{Type}$$.
-
-For clarity I will use $$\star$$ for the latter two uses from here onwards.
-
-With this in mind, we can now formally specify the kind judgement $$K \vdash \tau : \kappa$$, where $$K$$ is a kind context, $$\tau$$ is a type, and $$\kappa$$ is a kind:
+<br/>
 
 $$
 \begin{prooftree}
 \AxiomC{}
-\UnaryInfC{$K \vdash \value :$ View}
+\UnaryInfC{$(\identity \star \tau) \leadsto_A \tau$}
+\end{prooftree}
+$$
+
+<br/>
+
+$$
+\begin{prooftree}
+\AxiomC{$A \vdash$ Copy $\tau$}
+\UnaryInfC{$(\omega \star \tau) \leadsto_A \tau$}
+\end{prooftree}
+$$
+
+<br/>
+
+$$
+\begin{prooftree}
+\AxiomC{}
+\UnaryInfC{$ \omega_1 \star (\omega_2 \star \tau) \leadsto_A \{ \omega_1, \omega_2 \} \star \tau $}
+\end{prooftree}
+$$
+
+<br/>
+
+$$
+\begin{prooftree}
+\AxiomC{}
+\UnaryInfC{$\{ \} \leadsto_A \identity $}
+\end{prooftree}
+$$
+
+<br/>
+
+$$
+\begin{prooftree}
+\AxiomC{$ \identity \in \{ \omega_1, \dots, \omega_n \} $}
+\UnaryInfC{$\{ \omega_1, \dots, \omega_n \} \leadsto_A \{ \omega_1, \dots, \omega_n \} \setminus \{ \identity \} $}
+\end{prooftree}
+$$
+
+<br/>
+
+$$
+\begin{prooftree}
+\AxiomC{$\omega_i = \{ \psi_1, \dots, \psi_m \} $}
+\UnaryInfC{$\{ \omega_1, \dots, \omega_n \} \leadsto_A \{ \omega_1 \dots \omega_{i-1}, \psi_1, \dots, \psi_m, \omega_{i+1}, \dots, \omega_n \} $}
+\end{prooftree}
+$$
+
+<br/>
+
+
+
+# Kinds
+
+We can now formally specify the kind judgement $$K \vdash \tau : \kappa$$, where $$K$$ is a kind context, $$\tau$$ is a type, and $$\kappa$$ is a kind. Here all types are taken as fully normalized.
+
+<br/>
+
+$$
+\begin{prooftree}
+\AxiomC{}
+\UnaryInfC{$K \vdash \identity :$ View}
 \end{prooftree}
 $$
 
@@ -60,6 +112,36 @@ $$
 \begin{prooftree}
 \AxiomC{$\tau : \kappa \in K$}
 \UnaryInfC{$K \vdash \tau : \kappa$}
+\end{prooftree}
+$$
+
+<br/>
+
+$$
+\begin{prooftree}
+\AxiomC{$K \vdash \omega_1 : \text{Ref}$}
+\noLine
+\UnaryInfC{$\rlap{\dots}\phantom{K \vdash \omega_n : \text{Ref}}$}
+\noLine
+\UnaryInfC{$K \vdash \omega_n : \text{Ref}$}
+\AxiomC{$|\{ \omega_1, \dots, \omega_n \}| \geq 2$}
+\BinaryInfC{$K \vdash \{ \omega_1, \dots, \omega_n \} : \text{Ref} $}
+\end{prooftree}
+$$
+
+<br/>
+
+$$
+\begin{prooftree}
+\AxiomC{$K \vdash \omega_1 : \kappa_1$}
+\noLine
+\UnaryInfC{$\rlap{\dots}\phantom{K \vdash \omega_n : \kappa_n}$}
+\noLine
+\UnaryInfC{$K \vdash \omega_n : \kappa_n$}
+\AxiomC{$\{ \kappa_1, \dots, \kappa_n \} \subseteq \{ \text{Ref}, \text{View} \} $}
+\AxiomC{$\{ \kappa_1, \dots, \kappa_n \} \neq \{ \text{Ref} \} $}
+\AxiomC{$|\{ \omega_1, \dots, \omega_n \}| \geq 2$}
+\QuaternaryInfC{$K \vdash \{ \omega_1, \dots, \omega_n \} : \text{View} $}
 \end{prooftree}
 $$
 
@@ -104,29 +186,6 @@ $$
 \AxiomC{$K \vdash \sigma : $ View $ \rightarrow \kappa$}
 \AxiomC{$K \vdash \tau : $ Ref }
 \BinaryInfC{$K \vdash (\sigma \star \tau) : \kappa$}
-\end{prooftree}
-$$
-
-<br/>
-
-# Normalisation
-
-Recall that types are subject to *normalisation*. Let $$A \vdash C$$ mean the type constraint $$C$$ follows from the set of axioms $$A$$. Then normalisation is the reflexive transitive closure of $$\leadsto_A$$ defined below, where $$\omega$$ stands for any reference or view.
-
-$$
-\begin{prooftree}
-\AxiomC{}
-\UnaryInfC{$(\value \star \tau) \leadsto_A \tau$}
-\end{prooftree}
-$$
-
-<br/>
-
-$$
-\begin{prooftree}
-\AxiomC{$A \vdash$ Copy $\tau$}
-\AxiomC{$\omega \neq \value$}
-\BinaryInfC{$(\omega \star \tau) \leadsto_A \tau$}
 \end{prooftree}
 $$
 
